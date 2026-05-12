@@ -53,3 +53,14 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# ESP-IDF
+managed_components/
+build/
+sdkconfig.old
+
+# VSCode
+.vscode/
+
+# Python cache
+__pycache__/

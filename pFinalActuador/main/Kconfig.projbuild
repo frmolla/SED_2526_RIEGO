@@ -1,0 +1,11 @@
+menu "Example Configuration"
+	config ESP_WIFI_SSID
+		string "WiFi SSID"
+		default "WSFMA"
+	config ESP_WIFI_PASSWORD
+		string "WiFi Password"
+		default "m82fsq76xxhxsvd"
+	config BROKER_URL
+		string "Broker URL"
+		default "mqtt://broker.emqx.io"
+endmenu
