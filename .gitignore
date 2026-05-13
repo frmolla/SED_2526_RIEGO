@@ -57,6 +57,7 @@ dkms.conf
 # ESP-IDF
 managed_components/
 build/
+**/Kconfig.projbuild
 sdkconfig.old
 
 # VSCode

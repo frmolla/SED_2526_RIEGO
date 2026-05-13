@@ -17,7 +17,6 @@ El sistema propone una solución de riego automatizado y eficiente basada en con
 - Actualizaciones OTA mediante Mender.
 - Recuperación automática ante pérdida de conexión.
 - Gestión de errores y tolerancia a fallos.
-- Sistema de riego automatizado.
 
 ## Vídeo demostrativo
 
