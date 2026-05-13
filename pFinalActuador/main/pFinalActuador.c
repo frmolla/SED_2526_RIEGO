@@ -17,19 +17,53 @@
 
 #include <string.h>
 
-static float delay = 10.0; // Tiempo
+#include "esp_ota_ops.h"
+#include <inttypes.h>
+
+// Includes para Mender
+#include <esp_mac.h>
+#include "mender-client.h"
+#include "mender-flash.h"
 
 // Definimos el pin donde conectaste el "IN" del relé
 #define RELAY_PIN 13 
+#define LED_GPIO 4
 
 static const char* TAG = "pFinalActuador";
+#define VERSION "1.0.0"
 
-#define LED_GPIO 2
-#define TOPIC_STATUS   "sed/G04/statusA"
+#define TOPIC_STATUS   "sed/G04/actuador/status"
 #define TOPIC_LED      "sed/G04/actuador/led"
 #define TOPIC_TEMP     "sed/G04/sensorT/temp"
 #define TOPIC_SOIL     "sed/G04/sensorS/soil"
-#define TOPIC_DELAY     "sed/G04/delay"
+
+typedef struct
+{
+    char topic[64];
+    char payload[32];
+} mqtt_msg_t;
+
+static QueueHandle_t mqtt_queue;
+
+void task_mqtt_publish(void* pvParameters)
+{
+    esp_mqtt_client_handle_t client = (esp_mqtt_client_handle_t)pvParameters;
+
+    mqtt_msg_t msg;
+
+    while (1)
+    {
+        if (xQueueReceive(mqtt_queue, &msg, portMAX_DELAY))
+        {
+            if (client != NULL)
+            {
+                esp_mqtt_client_publish(client, msg.topic, msg.payload, 0, 1, 0);
+
+                ESP_LOGI(TAG, "MQTT -> Topic: %s | Payload: %s", msg.topic, msg.payload);
+            }
+        }
+    }
+}
 
 void wifi_init_sta(void) {
     // Inicializar la pila de red y el bucle de eventos
@@ -59,6 +93,39 @@ void wifi_init_sta(void) {
     esp_wifi_connect();
 }
 
+// Configuración Mender
+// --- Variables globales
+mender_client_config_t mender_config;
+mender_client_callbacks_t mender_callbacks;
+mender_keystore_t mender_identity[2];
+char mender_mac_address[18];
+// --- Callbacks
+static mender_err_t mender_network_connect_cb(void) { return MENDER_OK; }
+static mender_err_t mender_network_release_cb(void) { return MENDER_OK; }
+static mender_err_t mender_auth_failure_cb(void) { return MENDER_OK; }
+
+static mender_err_t mender_deployment_status_cb(mender_deployment_status_t status, char* desc) {
+    ESP_LOGI("MENDER", "Estado del despliegue: %s", desc ? desc : "Desconocido");
+    return MENDER_OK;
+}
+
+// static mender_err_t mender_auth_success_cb(void) { 
+//   ESP_LOGI("MENDER", "Autenticacion exitosa con el servidor");
+//   // Esto es VITAL: le dice al ESP32 que el firmware funciona y no debe volver a la versión anterior
+//   return mender_flash_confirm_image(); 
+// }
+
+static mender_err_t mender_auth_success_cb(void) {
+    ESP_LOGI("MENDER", "Autenticacion exitosa con el servidor");
+    return MENDER_OK;
+}
+
+static mender_err_t mender_restart_cb(void) {
+    ESP_LOGI("MENDER", "Reiniciando el sistema por peticion de OTA...");
+    esp_restart();
+    return MENDER_OK;
+}
+
 static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_t event_id, void* event_data) {
     esp_mqtt_event_handle_t event = event_data;
     esp_mqtt_client_handle_t client = event->client;
@@ -67,10 +134,14 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "Conectado al Broker");
         // Publicar mensaje "Online" para coherencia con LWT
-        esp_mqtt_client_publish(client, TOPIC_STATUS, "Online", 0, 1, 0);
+        mqtt_msg_t msg;
+        snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_STATUS);
+        snprintf(msg.payload, sizeof(msg.payload), "%s", "Online");
+        xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
         // Suscribirse al tópico del LED 
         esp_mqtt_client_subscribe(client, TOPIC_TEMP, 1);
         esp_mqtt_client_subscribe(client, TOPIC_SOIL, 1);
+        esp_mqtt_client_subscribe(client, TOPIC_LED, 1);
         break;
 
     case MQTT_EVENT_DATA:
@@ -93,7 +164,11 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
             
             ESP_LOGI("LOG", "Valor: %.2f", humedad);
 
-            if (humedad > 24) {
+            // Limpiar la configuración anterior del pin y establecerlo como salida
+            gpio_reset_pin(RELAY_PIN);
+            gpio_set_direction(RELAY_PIN, GPIO_MODE_OUTPUT);
+
+            if (humedad < 0) {
                 printf("ACTIVANDO RELE (Bomba ON)...\n");
                 // Enviar 3.3V (Nivel Alto / 1) para activar el relé
                 gpio_set_level(RELAY_PIN, 1);
@@ -106,10 +181,34 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
                 gpio_set_level(RELAY_PIN, 0);
             }
         }
+        // Procesar comando para el LED
+        if (strncmp("ON", event->data, event->data_len) == 0) {
+            gpio_reset_pin(LED_GPIO);
+            gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
+            // En lugar de 1 (máximo voltaje), enviamos pulsos rápidos
+            gpio_set_level(LED_GPIO, 1); // Led encendido
+            ESP_LOGI(TAG, "LED encendido");
+        }
+        else if (strncmp("OFF", event->data, event->data_len) == 0) {
+            gpio_reset_pin(LED_GPIO);
+            gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
+            gpio_set_level(LED_GPIO, 0); // Apagado
+            ESP_LOGI(TAG, "LED apagado");
+        }
         break;
 
     case MQTT_EVENT_ERROR:
         ESP_LOGE(TAG, "Error en el stack MQTT");
+        // comprobar
+        wifi_ap_record_t ap_info;
+
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            ESP_LOGI(TAG, "Conectado a: %s", ap_info.ssid);
+        }
+        else {
+            ESP_LOGI(TAG, "No conectado, reconectando...");
+            wifi_init_sta(); // Reconectamos la red 
+        }
         break;
 
     default:
@@ -136,16 +235,51 @@ static esp_mqtt_client_handle_t mqtt_app_start(void) {
     return client;
 }
 
-void task_periodic(void* pvParameters) {
-    while (1) {
-        ESP_LOGI(TAG, "Tarea periódica");
-        // Esperar 10 segundos
-        vTaskDelay(pdMS_TO_TICKS(10000));
+// Función de diagnóstico: Verifica si estamos conectados al Wi-Fi
+bool perform_health_check() {
+    wifi_ap_record_t ap_info;
+    // Si podemos leer la info del AP, es que estamos conectados
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        ESP_LOGI("HEALTH", "Conectado al AP con RSSI: %d", ap_info.rssi);
+        return true;
+    }
+    ESP_LOGE("HEALTH", "Fallo de conexión Wi-Fi.");
+    return false;
+}
+
+// Lógica de supervivencia
+void check_and_commit_ota() {
+    esp_ota_img_states_t ota_state;
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    if (esp_ota_get_state_partition(running, &ota_state) == ESP_OK) {
+        if (ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
+            ESP_LOGI("OTA", "Imagen en periodo de prueba. Iniciando auto-diagnóstico...");
+            if (perform_health_check()) {
+                ESP_LOGI("OTA", "Salud verificada. Marcando firmware como VLIDO.");
+                esp_ota_mark_app_valid_cancel_rollback();
+            }
+            else {
+                ESP_LOGE("OTA", "Error en diagnóstico. Forzando Rollback y reiniciando...");
+                esp_ota_mark_app_invalid_rollback_and_reboot();
+            }
+        }
     }
 }
 
 void app_main(void)
 {
+    // Crear cola MQTT
+    mqtt_queue = xQueueCreate(
+        10,
+        sizeof(mqtt_msg_t)
+    );
+
+    const esp_partition_t* running = esp_ota_get_running_partition();
+    printf("--- SISTEMA INICIADO ---\n");
+    printf("Versión de Firmware: %s\n", VERSION);
+    printf("Ejecutando desde partición: %s\n", running->label);
+    printf("Dirección Offset: 0x%08" PRIx32 "\n", running->address);
+
     // Iniciar WiFi
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -171,12 +305,50 @@ void app_main(void)
     esp_netif_set_dns_info(netif, ESP_NETIF_DNS_MAIN, &dns);
     // DNS
 
+    check_and_commit_ota();
+
+    // --- INICIO CONFIGURACIÓN MENDER ---
+    // 1. Obtener la dirección MAC (Mender la exige como identificador único)
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+    sprintf(mender_mac_address, "%02x:%02x:%02x:%02x:%02x:%02x",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    // 2. Identidad
+    mender_identity[0].name = "mac";
+    mender_identity[0].value = mender_mac_address;
+    mender_identity[1].name = NULL;
+    mender_identity[1].value = NULL;
+
+    // 3. Configurar los parámetros
+    mender_config.identity = mender_identity;
+    mender_config.artifact_name = VERSION;
+    mender_config.device_type = "esp32";
+    mender_config.host = CONFIG_MENDER_SERVER_HOST;
+    mender_config.tenant_token = CONFIG_MENDER_SERVER_TENANT_TOKEN;
+    mender_config.authentication_poll_interval = 60;
+    mender_config.update_poll_interval = 60;
+    mender_config.recommissioning = false;
+
+    // 4. Definir los callbacks obligatorios
+    mender_callbacks.network_connect = mender_network_connect_cb;
+    mender_callbacks.network_release = mender_network_release_cb;
+    mender_callbacks.authentication_success = mender_auth_success_cb;
+    mender_callbacks.authentication_failure = mender_auth_failure_cb;
+    mender_callbacks.deployment_status = mender_deployment_status_cb;
+    mender_callbacks.restart = mender_restart_cb;
+
+    // 5. Arrancar el cliente Mender en segundo plano
+    ESP_LOGI("MENDER", "Iniciando cliente con MAC: %s", mender_mac_address);
+    if (mender_client_init(&mender_config, &mender_callbacks) == MENDER_OK) {
+        mender_client_activate(); // ¡Esto pone a Mender a funcionar en segundo plano!
+    }
+    else {
+        ESP_LOGE("MENDER", "Fallo al inicializar Mender");
+    }
+    // --- FIN CONFIGURACIÓN MENDER ---
+
     esp_mqtt_client_handle_t client = mqtt_app_start();
 
-    // Limpiar la configuración anterior del pin y establecerlo como salida
-    gpio_reset_pin(RELAY_PIN);
-    gpio_set_direction(RELAY_PIN, GPIO_MODE_OUTPUT);
-
-    //xTaskCreate(task_procesar, "funcionamiento bomba", configMINIMAL_STACK_SIZE * 8, client, 5, NULL);
-    xTaskCreate(task_periodic, "periodic task", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL);
+    // Tarea para publicar MQTT
+    xTaskCreate(task_mqtt_publish, "task_mqtt", configMINIMAL_STACK_SIZE * 8, client, 5, NULL);
 }

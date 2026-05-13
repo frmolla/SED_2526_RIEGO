@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include <esp_system.h>
 #include <esp_log.h>
 // Incluimos los drivers del componente externo
@@ -25,11 +27,14 @@
 
 #include <string.h>
 
-static const char* TAG = "pFinalSensor";
+#include "esp_sntp.h"
+#include <time.h>
 
-// Sustituye GXX por tu grupo, p.e. G01:
-#define LED_GPIO 2
-#define TOPIC_STATUS   "sed/G04/status"
+static const char* TAG = "pFinalSensor";
+#define VERSION "1.0.0"
+
+// G04
+#define TOPIC_STATUS   "sed/G04/sensor/status"
 #define TOPIC_LED      "sed/G04/actuador/led"
 #define TOPIC_TEMP     "sed/G04/sensorT/temp"
 #define TOPIC_DIST     "sed/G04/sensorD/dist"
@@ -42,14 +47,50 @@ static const char* TAG = "pFinalSensor";
 
 static float delay = 10.0; // Tiempo
 
-typedef struct {
-    esp_mqtt_client_handle_t client;
-    adc_oneshot_unit_handle_t adc_handle;
-} task_params_t;
+typedef struct
+{
+    char topic[64];
+    char payload[32];
+} mqtt_msg_t;
+
+static SemaphoreHandle_t adc_mutex;
+static SemaphoreHandle_t i2c_mutex;
+
+static QueueHandle_t mqtt_queue;
+
+void iniciar_reloj() {
+    // Configuramos el servidor y la zona horaria (España)
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_init();
+
+    setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+    tzset();
+}
+
+void task_mqtt_publish(void* pvParameters)
+{
+    esp_mqtt_client_handle_t client = (esp_mqtt_client_handle_t)pvParameters;
+
+    mqtt_msg_t msg;
+
+    while (1)
+    {
+        if (xQueueReceive(mqtt_queue, &msg, portMAX_DELAY))
+        {
+            if (client != NULL)
+            {
+                esp_mqtt_client_publish(client, msg.topic, msg.payload, 0, 1, 0);
+
+                ESP_LOGI(TAG, "MQTT -> Topic: %s | Payload: %s", msg.topic, msg.payload);
+            }
+        }
+    }
+}
 
 void task_lectura_7021(void* pvParameters) {
     // Recuperamos el cliente MQTT pasado desde app_main
-    esp_mqtt_client_handle_t client = pvParameters;
+    //esp_mqtt_client_handle_t client = pvParameters;
     i2c_dev_t dev = { 0 }; // Estructura del dispositivo I2C
     char payload[16]; // Buffer para el texto de la temperatura
 
@@ -57,21 +98,24 @@ void task_lectura_7021(void* pvParameters) {
     // PUERTO_I2C, SDA_PIN, SCL_PIN son gestionados por la librería si se usa i2cdev_init()
     ESP_ERROR_CHECK(si7021_init_desc(&dev, 0, 10, 8));
 
+    mqtt_msg_t msg;
     float temperature;
 
     while (1) {
+        // Proteger I2C
+        xSemaphoreTake(i2c_mutex, portMAX_DELAY);
         // Leer valores del sensor
         esp_err_t res1 = si7021_measure_temperature(&dev, &temperature);
+        xSemaphoreGive(i2c_mutex);
 
         if (res1 == ESP_OK) {
             ESP_LOGI(TAG, "Temperatura: %.2f C %", temperature);
 
-            // Convertir float a string
-            snprintf(payload, sizeof(payload), "%.2f", temperature);
-            // PUBLICAR: Si el cliente existe, enviamos el dato
-            if (client != NULL) {
-                esp_mqtt_client_publish(client, TOPIC_TEMP, payload, 0, 1, 0);
-            }
+            // Preparar msg
+            snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_TEMP);
+            snprintf(msg.payload, sizeof(msg.payload), "%.2f", temperature);
+            // Encolamos la información
+            xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
         }
         else {
             ESP_LOGE(TAG, "Error leyendo la temperatura: %d (%s)", res1, esp_err_to_name(res1));
@@ -84,17 +128,19 @@ void task_lectura_7021(void* pvParameters) {
 void task_lectura_soil(void* pvParameters)
 {
     // Recuperar parámetros pasados en la estructura
-    task_params_t* params = (task_params_t*)pvParameters;
-    esp_mqtt_client_handle_t client = params->client;
-    adc_oneshot_unit_handle_t adc_handle = params->adc_handle;
+    adc_oneshot_unit_handle_t adc_handle = (adc_oneshot_unit_handle_t)pvParameters;
 
     char payload[16];
 
+    mqtt_msg_t msg;
     int humedad_raw;
 
     while (1)
     {
+        // Proteger ADC
+        xSemaphoreTake(adc_mutex, portMAX_DELAY);
         adc_oneshot_read(adc_handle, SOIL_ADC_CHANNEL, &humedad_raw);
+        xSemaphoreGive(adc_mutex);
 
         // Convertir a porcentaje
         float soil_pct = 100.0f * (1.0f - ((float)(humedad_raw - 1100) / (2500.0f - 1100.0f)));
@@ -107,13 +153,11 @@ void task_lectura_soil(void* pvParameters)
 
         ESP_LOGI(TAG, "Humedad suelo: %.2f %%", soil_pct);
 
-        // Convertir float a string para MQTT
-        snprintf(payload, sizeof(payload), "%.2f", soil_pct);
+        // Preparar msg
+        snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_SOIL);
+        snprintf(msg.payload, sizeof(msg.payload), "%.2f", soil_pct);
 
-        if (client != NULL)
-        {
-            esp_mqtt_client_publish(client, TOPIC_SOIL, payload, 0, 1, 0);
-        }
+        xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
 
         vTaskDelay(pdMS_TO_TICKS(delay * 1000));
     }
@@ -122,17 +166,19 @@ void task_lectura_soil(void* pvParameters)
 void task_lectura_distancia(void* pvParameters)
 {
     // Recuperar parámetros pasados en la estructura
-    task_params_t* params = (task_params_t*)pvParameters;
-    esp_mqtt_client_handle_t client = params->client;
-    adc_oneshot_unit_handle_t adc_handle = params->adc_handle;
+    adc_oneshot_unit_handle_t adc_handle = (adc_oneshot_unit_handle_t)pvParameters;
 
     char payload[16];
 
+    mqtt_msg_t msg;
     int dist_raw;
 
     while (1)
     {
+        // Proteger ADC
+        xSemaphoreTake(adc_mutex, portMAX_DELAY);
         adc_oneshot_read(adc_handle, DISTANCE_ADC_CHANNEL, &dist_raw);
+        xSemaphoreGive(adc_mutex);
 
         // El sensor Sharp da más voltaje cuanto más cerca está el objeto.
         // Una fórmula para convertirlo a cm (aproximada):
@@ -140,14 +186,36 @@ void task_lectura_distancia(void* pvParameters)
 
         ESP_LOGI(TAG, "Distancia: %.2f cm%", distancia_cm);
 
-        // Convertir float a string para MQTT
-        snprintf(payload, sizeof(payload), "%.2f", distancia_cm);
+        // Preparar msg
+        snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_DIST);
+        snprintf(msg.payload, sizeof(msg.payload), "%.2f", distancia_cm);
 
-        if (client != NULL)
-        {
-            esp_mqtt_client_publish(client, TOPIC_DIST, payload, 0, 1, 0);
+        xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
+
+        vTaskDelay(pdMS_TO_TICKS(delay * 1000));
+    }
+}
+
+void task_logica_horario_led(void*) {  
+    while (1)
+    {
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
+        // Encender de 08:00 a 20:00 (Luz de día para la planta)
+        if (timeinfo.tm_hour >= 8 && timeinfo.tm_hour < 20) {
+            mqtt_msg_t msg;
+            snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_LED);
+            snprintf(msg.payload, sizeof(msg.payload), "%s", "ON");
+            xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
         }
-
+        else {
+            mqtt_msg_t msg;
+            snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_LED);
+            snprintf(msg.payload, sizeof(msg.payload), "%s", "OFF");
+            xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
+        }
         vTaskDelay(pdMS_TO_TICKS(delay * 1000));
     }
 }
@@ -188,9 +256,11 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "Conectado al Broker");
         // Publicar mensaje "Online" para coherencia con LWT
-        esp_mqtt_client_publish(client, TOPIC_STATUS, "Online", 0, 1, 0);
-        // Suscribirse al tópico del LED 
-        esp_mqtt_client_subscribe(client, TOPIC_LED, 1);
+        mqtt_msg_t msg;
+        snprintf(msg.topic, sizeof(msg.topic), "%s", TOPIC_STATUS);
+        snprintf(msg.payload, sizeof(msg.payload), "%s", "Online");
+        xQueueSend(mqtt_queue, &msg, portMAX_DELAY);
+        // Suscribirse al tópico delay
         esp_mqtt_client_subscribe(client, TOPIC_DELAY, 1);
         break;
 
@@ -198,23 +268,26 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "Mensaje recibido en Tópico: %.*s", event->topic_len, event->topic);
         ESP_LOGI(TAG, "Datos: %.*s", event->data_len, event->data);
 
-        // Procesar comando para el LED
-        if (strncmp("ON", event->data, event->data_len) == 0) {
-            gpio_set_level(GPIO_NUM_2, 1);
-            ESP_LOGI(TAG, "LED encendido");
-        }
-        else if (strncmp("OFF", event->data, event->data_len) == 0) {
-            gpio_set_level(GPIO_NUM_2, 0);
-            ESP_LOGI(TAG, "LED apagado");
-        }
-        else {
-            delay = (float)*event->data;
-            ESP_LOGI(TAG, "Cambio delay");
-        }
+        // Procesamos la actualizacion de delay
+        char buffer[64] = { 0 };
+        memcpy(buffer, event->data, event->data_len);
+        delay = atof(buffer);
+        ESP_LOGI(TAG, "Cambio delay: %.2f %", delay);
+
         break;
 
     case MQTT_EVENT_ERROR:
         ESP_LOGE(TAG, "Error en el stack MQTT");
+        // comprobar
+        wifi_ap_record_t ap_info;
+
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+            ESP_LOGI(TAG, "Conectado a: %s", ap_info.ssid);
+        }
+        else {
+            ESP_LOGI(TAG, "No conectado, reconectando...");
+            wifi_init_sta(); // Reconectamos la red 
+        }
         break;
 
     default:
@@ -242,6 +315,16 @@ static esp_mqtt_client_handle_t mqtt_app_start(void) {
 }
 
 void app_main() {
+
+    adc_mutex = xSemaphoreCreateMutex();
+    i2c_mutex = xSemaphoreCreateMutex();
+
+    // Crear cola MQTT
+    mqtt_queue = xQueueCreate(
+        10,
+        sizeof(mqtt_msg_t)
+    );
+
     // Iniciar I2C y configurar el LED
     // Inicializar la librería I2C helper
     ESP_ERROR_CHECK(i2cdev_init());
@@ -273,8 +356,11 @@ void app_main() {
 
     esp_mqtt_client_handle_t client = mqtt_app_start();
 
+    // Tarea para publicar MQTT
+    xTaskCreate(task_mqtt_publish, "task_mqtt", configMINIMAL_STACK_SIZE * 8, client, 5, NULL);
+
     // Crear la tarea de lectura temp
-    xTaskCreate(task_lectura_7021, "lectura_sensor_temp", configMINIMAL_STACK_SIZE * 8, client, 5, NULL);
+    xTaskCreate(task_lectura_7021, "lectura_sensor_temp", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL);
 
     // Inicializar ADC una sola vez
     adc_oneshot_unit_handle_t adc_handle = NULL;
@@ -291,15 +377,13 @@ void app_main() {
     adc_oneshot_config_channel(adc_handle, SOIL_ADC_CHANNEL, &adc_config);
     adc_oneshot_config_channel(adc_handle, DISTANCE_ADC_CHANNEL, &adc_config);
 
-    task_params_t* params_soil = malloc(sizeof(task_params_t));
-    params_soil->client = client;
-    params_soil->adc_handle = adc_handle;
     // Crear la tarea de lectura humd
-    xTaskCreate(task_lectura_soil, "lectura_sensor_soil", configMINIMAL_STACK_SIZE * 8, params_soil, 5, NULL);
+    xTaskCreate(task_lectura_soil, "lectura_sensor_soil", configMINIMAL_STACK_SIZE * 8, adc_handle, 5, NULL);
 
-    task_params_t* params_dist = malloc(sizeof(task_params_t));
-    params_dist->client = client;
-    params_dist->adc_handle = adc_handle;
     // Crear la tarea de lectura dist
-    xTaskCreate(task_lectura_distancia, "lectura_sensor_dist", configMINIMAL_STACK_SIZE * 8, params_dist, 5, NULL);
+    xTaskCreate(task_lectura_distancia, "lectura_sensor_dist", configMINIMAL_STACK_SIZE * 8, adc_handle, 5, NULL);
+
+    // Crear la tarea para la luz artifical
+    iniciar_reloj();
+    xTaskCreate(task_logica_horario_led, "led_horario", configMINIMAL_STACK_SIZE * 8, NULL, 5, NULL);
 }

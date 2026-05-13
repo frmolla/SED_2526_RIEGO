@@ -64,3 +64,34 @@ sdkconfig.old
 
 # Python cache
 __pycache__/
+
+# Dependencias
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Credenciales y secretos
+flows_cred.json
+*cred.json
+.env
+.env.*
+
+# Runtime/cache
+.context/
+tmp/
+temp/
+
+# Docker
+docker-data/
+data/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Opcional
+package-lock.json

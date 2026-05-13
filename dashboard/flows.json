@@ -1,0 +1,721 @@
+[
+    {
+        "id": "387f64351ced6aab",
+        "type": "tab",
+        "label": "Flujo 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "56f4a99b42f36800",
+        "type": "ui-gauge",
+        "z": "387f64351ced6aab",
+        "name": "Temperatura",
+        "group": "10d7bbe431db09b3",
+        "order": 4,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "Temperatura",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "units",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "0",
+                "color": "#00ff55",
+                "text": "",
+                "textType": "label"
+            },
+            {
+                "from": "25",
+                "color": "#ff0000",
+                "text": "",
+                "textType": "label"
+            }
+        ],
+        "min": 0,
+        "max": "50",
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 650,
+        "y": 260,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "2b5ad9a3807e0c83",
+        "type": "ui-chart",
+        "z": "387f64351ced6aab",
+        "group": "10d7bbe431db09b3",
+        "name": "",
+        "label": "Gráfico humedad/temperatura/capacidad",
+        "order": 7,
+        "chartType": "line",
+        "category": "topic",
+        "categoryType": "msg",
+        "xAxisLabel": "",
+        "xAxisProperty": "",
+        "xAxisPropertyType": "timestamp",
+        "xAxisType": "time",
+        "xAxisFormat": "",
+        "xAxisFormatType": "auto",
+        "xmin": "",
+        "xmax": "",
+        "yAxisLabel": "",
+        "yAxisProperty": "payload",
+        "yAxisPropertyType": "msg",
+        "ymin": "",
+        "ymax": "",
+        "bins": 10,
+        "action": "append",
+        "stackSeries": false,
+        "pointShape": "circle",
+        "pointRadius": 4,
+        "showLegend": true,
+        "removeOlder": 1,
+        "removeOlderUnit": "3600",
+        "removeOlderPoints": "",
+        "colors": [
+            "#0095ff",
+            "#ff0000",
+            "#ff7f0e",
+            "#2ca02c",
+            "#a347e1",
+            "#d62728",
+            "#ff9896",
+            "#9467bd",
+            "#c5b0d5"
+        ],
+        "textColor": [
+            "#666666"
+        ],
+        "textColorDefault": true,
+        "gridColor": [
+            "#e5e5e5"
+        ],
+        "gridColorDefault": true,
+        "width": 9,
+        "height": 8,
+        "className": "",
+        "interpolation": "linear",
+        "x": 1040,
+        "y": 260,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "391853d938da8f29",
+        "type": "mqtt in",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "topic": "sed/G04/sensorT/temp",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "d5567f5f7999dd0f",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 120,
+        "y": 160,
+        "wires": [
+            [
+                "3484876fc4564ff2"
+            ]
+        ]
+    },
+    {
+        "id": "3484876fc4564ff2",
+        "type": "json",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 370,
+        "y": 120,
+        "wires": [
+            [
+                "2b5ad9a3807e0c83",
+                "d06621c9bad545d5"
+            ]
+        ]
+    },
+    {
+        "id": "6d3722cbaca926d5",
+        "type": "ui-slider",
+        "z": "387f64351ced6aab",
+        "group": "10d7bbe431db09b3",
+        "name": "Delay",
+        "label": "Delay",
+        "tooltip": "",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "outs": "all",
+        "topic": "topic",
+        "topicType": "msg",
+        "thumbLabel": "true",
+        "showTicks": "always",
+        "min": "5",
+        "max": "100",
+        "step": "5",
+        "className": "",
+        "iconPrepend": "",
+        "iconAppend": "",
+        "color": "",
+        "colorTrack": "",
+        "colorThumb": "",
+        "showTextField": false,
+        "x": 90,
+        "y": 680,
+        "wires": [
+            [
+                "f0703ea7db2dd598"
+            ]
+        ]
+    },
+    {
+        "id": "f0703ea7db2dd598",
+        "type": "mqtt out",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "topic": "sed/G04/delay",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "d5567f5f7999dd0f",
+        "x": 320,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "f5d7382afd0e57b5",
+        "type": "mqtt in",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "topic": "sed/G04/sensorS/soil",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "d5567f5f7999dd0f",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 140,
+        "y": 480,
+        "wires": [
+            [
+                "e18802be58da0580"
+            ]
+        ]
+    },
+    {
+        "id": "8a4d863ff5cefe99",
+        "type": "mqtt in",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "topic": "sed/G04/sensorD/dist",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "d5567f5f7999dd0f",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 140,
+        "y": 540,
+        "wires": [
+            [
+                "bc2486498099b420"
+            ]
+        ]
+    },
+    {
+        "id": "e18802be58da0580",
+        "type": "json",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 330,
+        "y": 480,
+        "wires": [
+            [
+                "2b5ad9a3807e0c83",
+                "0b8700a2d45a6123"
+            ]
+        ]
+    },
+    {
+        "id": "bc2486498099b420",
+        "type": "json",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 330,
+        "y": 540,
+        "wires": [
+            [
+                "2b5ad9a3807e0c83",
+                "df763e1949cb5e28"
+            ]
+        ]
+    },
+    {
+        "id": "0b8700a2d45a6123",
+        "type": "ui-gauge",
+        "z": "387f64351ced6aab",
+        "name": "Humedad tierra",
+        "group": "10d7bbe431db09b3",
+        "order": 5,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "Humedad tierra",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "units",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "0",
+                "color": "#ff0000",
+                "text": "",
+                "textType": "label"
+            },
+            {
+                "from": "15",
+                "color": "#00ff00",
+                "text": "",
+                "textType": "label"
+            }
+        ],
+        "min": 0,
+        "max": "100",
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 820,
+        "y": 480,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "869ed174911cebbd",
+        "type": "ui-gauge",
+        "z": "387f64351ced6aab",
+        "name": "Cantidad de agua",
+        "group": "10d7bbe431db09b3",
+        "order": 6,
+        "value": "payload",
+        "valueType": "msg",
+        "width": 3,
+        "height": 3,
+        "gtype": "gauge-half",
+        "gstyle": "needle",
+        "title": "Cantidad de agua",
+        "alwaysShowTitle": false,
+        "floatingTitlePosition": "top-left",
+        "units": "units",
+        "icon": "",
+        "prefix": "",
+        "suffix": "",
+        "segments": [
+            {
+                "from": "0",
+                "color": "#00ff55",
+                "text": "",
+                "textType": "label"
+            },
+            {
+                "from": "10",
+                "color": "#ff0000",
+                "text": "",
+                "textType": "label"
+            }
+        ],
+        "min": 0,
+        "max": "15",
+        "sizeThickness": 16,
+        "sizeGap": 4,
+        "sizeKeyThickness": 8,
+        "styleRounded": true,
+        "styleGlow": false,
+        "className": "",
+        "x": 870,
+        "y": 540,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c46157f33de72245",
+        "type": "mqtt in",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "topic": "sed/G04/sensor/status",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "d5567f5f7999dd0f",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 600,
+        "y": 680,
+        "wires": [
+            [
+                "49b18ca8c8e4fc66"
+            ]
+        ]
+    },
+    {
+        "id": "49b18ca8c8e4fc66",
+        "type": "ui-text",
+        "z": "387f64351ced6aab",
+        "group": "10d7bbe431db09b3",
+        "order": 1,
+        "width": "0",
+        "height": "0",
+        "name": "Status Nodo Sensor",
+        "label": "Status Nodo  Sensor  =>",
+        "format": "{{msg.payload}}",
+        "layout": "row-left",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 980,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "9a58e1f840eb7c26",
+        "type": "mqtt in",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "topic": "sed/G04/actuador/status",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "d5567f5f7999dd0f",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 610,
+        "y": 760,
+        "wires": [
+            [
+                "ce91bad4275fcaae"
+            ]
+        ]
+    },
+    {
+        "id": "ce91bad4275fcaae",
+        "type": "ui-text",
+        "z": "387f64351ced6aab",
+        "group": "10d7bbe431db09b3",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "Status Nodo Actuador",
+        "label": "Status Nodo Actuador  =>",
+        "format": "{{msg.payload}}",
+        "layout": "row-left",
+        "style": false,
+        "font": "",
+        "fontSize": 16,
+        "color": "#717171",
+        "wrapText": false,
+        "className": "",
+        "value": "payload",
+        "valueType": "msg",
+        "x": 980,
+        "y": 760,
+        "wires": []
+    },
+    {
+        "id": "0b4109843f944d89",
+        "type": "change",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "¡ALERTA: Falta de agua!",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 700,
+        "y": 620,
+        "wires": [
+            [
+                "869ed174911cebbd"
+            ]
+        ]
+    },
+    {
+        "id": "df763e1949cb5e28",
+        "type": "switch",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "lt",
+                "v": "10",
+                "vt": "num"
+            },
+            {
+                "t": "gte",
+                "v": "10",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 530,
+        "y": 540,
+        "wires": [
+            [
+                "869ed174911cebbd"
+            ],
+            [
+                "0b4109843f944d89"
+            ]
+        ]
+    },
+    {
+        "id": "d06621c9bad545d5",
+        "type": "switch",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "lt",
+                "v": "25",
+                "vt": "num"
+            },
+            {
+                "t": "gte",
+                "v": "25",
+                "vt": "num"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 230,
+        "y": 280,
+        "wires": [
+            [
+                "56f4a99b42f36800"
+            ],
+            [
+                "0b3b04ab0b9b2c02"
+            ]
+        ]
+    },
+    {
+        "id": "0b3b04ab0b9b2c02",
+        "type": "change",
+        "z": "387f64351ced6aab",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "¡ALERTA: Demasiado calor!",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 440,
+        "y": 340,
+        "wires": [
+            [
+                "56f4a99b42f36800"
+            ]
+        ]
+    },
+    {
+        "id": "10d7bbe431db09b3",
+        "type": "ui-group",
+        "name": "Información del Sistema",
+        "page": "36c7af0c0478b7fc",
+        "width": 12,
+        "height": 1,
+        "order": 1,
+        "showTitle": true,
+        "className": "",
+        "visible": "true",
+        "disabled": "false",
+        "groupType": "default"
+    },
+    {
+        "id": "d5567f5f7999dd0f",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "broker.emqx.io",
+        "port": "",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "36c7af0c0478b7fc",
+        "type": "ui-page",
+        "name": "SED_G04_Riego",
+        "ui": "c03528d5e4b05393",
+        "path": "/page",
+        "icon": "home",
+        "layout": "grid",
+        "theme": "adfa0d364e79f45f",
+        "breakpoints": [
+            {
+                "name": "Default",
+                "px": "0",
+                "cols": "3"
+            },
+            {
+                "name": "Tablet",
+                "px": "576",
+                "cols": "6"
+            },
+            {
+                "name": "Small Desktop",
+                "px": "768",
+                "cols": "9"
+            },
+            {
+                "name": "Desktop",
+                "px": "1024",
+                "cols": "12"
+            }
+        ],
+        "order": 1,
+        "className": "",
+        "visible": true,
+        "disabled": false
+    },
+    {
+        "id": "c03528d5e4b05393",
+        "type": "ui-base",
+        "name": "My Dashboard",
+        "path": "/dashboard",
+        "appIcon": "",
+        "includeClientData": true,
+        "acceptsClientConfig": [
+            "ui-notification",
+            "ui-control"
+        ],
+        "showPathInSidebar": false,
+        "headerContent": "page",
+        "navigationStyle": "default",
+        "titleBarStyle": "default",
+        "showReconnectNotification": true,
+        "notificationDisplayTime": 1,
+        "showDisconnectNotification": true,
+        "allowInstall": false
+    },
+    {
+        "id": "adfa0d364e79f45f",
+        "type": "ui-theme",
+        "name": "Default Theme",
+        "colors": {
+            "surface": "#ffffff",
+            "primary": "#0094CE",
+            "bgPage": "#eeeeee",
+            "groupBg": "#ffffff",
+            "groupOutline": "#cccccc"
+        },
+        "sizes": {
+            "density": "default",
+            "pagePadding": "12px",
+            "groupGap": "12px",
+            "groupBorderRadius": "4px",
+            "widgetGap": "12px"
+        }
+    },
+    {
+        "id": "ff666b4fa7b50e74",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "@flowfuse/node-red-dashboard": "1.30.2"
+        }
+    }
+]
