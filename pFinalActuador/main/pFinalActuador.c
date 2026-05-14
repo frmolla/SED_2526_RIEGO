@@ -30,7 +30,7 @@
 #define LED_GPIO 4
 
 static const char* TAG = "pFinalActuador";
-#define VERSION "1.0.0"
+#define VERSION "1.0.2"
 
 #define TOPIC_STATUS   "sed/G04/actuador/status"
 #define TOPIC_LED      "sed/G04/actuador/led"
@@ -148,27 +148,24 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         ESP_LOGI(TAG, "Mensaje recibido en Tópico: %.*s", event->topic_len, event->topic);
         ESP_LOGI(TAG, "Datos: %.*s", event->data_len, event->data);
         
-        float temperatura;
-        float humedad;
 
         char buffer[64] = { 0 };
         memcpy(buffer, event->data, event->data_len);
         ESP_LOGI("LOG EVENT", "Valor: %.2f", event->data);
 
         if (strcmp(event->topic, "sed/G04/sensorT/temp") == 0) {
+            float temperatura;
             temperatura = atof(buffer);
             ESP_LOGI("LOG", "Valor: %.2f", temperatura);
         }      
         if (strcmp(event->topic, "sed/G04/sensorS/soil") == 0) {
+
+            float humedad;
             humedad = atof(buffer);
             
             ESP_LOGI("LOG", "Valor: %.2f", humedad);
 
-            // Limpiar la configuración anterior del pin y establecerlo como salida
-            gpio_reset_pin(RELAY_PIN);
-            gpio_set_direction(RELAY_PIN, GPIO_MODE_OUTPUT);
-
-            if (humedad < 0) {
+            if (humedad < 15) {
                 printf("ACTIVANDO RELE (Bomba ON)...\n");
                 // Enviar 3.3V (Nivel Alto / 1) para activar el relé
                 gpio_set_level(RELAY_PIN, 1);
@@ -183,15 +180,11 @@ static void mqtt_event_handler(void* handler_args, esp_event_base_t base, int32_
         }
         // Procesar comando para el LED
         if (strncmp("ON", event->data, event->data_len) == 0) {
-            gpio_reset_pin(LED_GPIO);
-            gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
             // En lugar de 1 (máximo voltaje), enviamos pulsos rápidos
             gpio_set_level(LED_GPIO, 1); // Led encendido
             ESP_LOGI(TAG, "LED encendido");
         }
         else if (strncmp("OFF", event->data, event->data_len) == 0) {
-            gpio_reset_pin(LED_GPIO);
-            gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
             gpio_set_level(LED_GPIO, 0); // Apagado
             ESP_LOGI(TAG, "LED apagado");
         }
@@ -346,6 +339,13 @@ void app_main(void)
         ESP_LOGE("MENDER", "Fallo al inicializar Mender");
     }
     // --- FIN CONFIGURACIÓN MENDER ---
+
+    // Limpiar la configuración anterior del pin y establecerlo como salida
+    gpio_reset_pin(RELAY_PIN);
+    gpio_set_direction(RELAY_PIN, GPIO_MODE_OUTPUT);
+
+    gpio_reset_pin(LED_GPIO);
+    gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
 
     esp_mqtt_client_handle_t client = mqtt_app_start();
 
