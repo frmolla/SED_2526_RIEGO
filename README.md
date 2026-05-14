@@ -89,5 +89,8 @@ Responsable de activar el sistema de riego según las órdenes recibidas.
 - Node-RED
 - Docker
 - Mender OTA
+- ADC
+- I2C
+- UART
 
 
